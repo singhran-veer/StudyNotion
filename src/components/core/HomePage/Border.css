@@ -1,0 +1,48 @@
+.code-border {
+    isolation: isolate;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 45% 38%, rgba(255, 196, 87, 0.18), transparent 34%),
+        radial-gradient(circle at 8% 42%, rgba(132, 75, 255, 0.14), transparent 30%),
+        linear-gradient(111.93deg, rgba(6, 17, 31, 0.92) -1.4%, rgba(7, 17, 31, 0.98) 104.96%);
+    border-width: 2px;
+    border-style: solid;
+    border-color: transparent;
+    border-image-slice: 1;
+    border-image-source: linear-gradient(to right bottom, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.04));
+}
+
+.code-border > :not(.gradient-custom) {
+    position: relative;
+    z-index: 1;
+}
+
+.codeblock1 {
+  width: 372.95px;
+  height: 257.05px;
+  border-radius: 100%;
+  left: calc(50% - 372.95px / 2 - 76.53px);
+  top: calc(50% - 257.05px / 2 - 47.47px);
+  background: linear-gradient(
+    123.77deg,
+    #8a2be2 -6.46%,
+    #ffa500 59.04%,
+    #f8f8ff 124.53%
+  );
+  opacity: 0.2;
+  filter: blur(34px);
+  transform: matrix(1, 0, -0.03, 1, 0, 0);
+}
+
+.gradient-custom {
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 56% 45%, rgba(255, 207, 82, 0.95), transparent 38%),
+        radial-gradient(circle at 8% 50%, rgba(112, 64, 255, 0.8), transparent 34%),
+        radial-gradient(circle at 74% 22%, rgba(40, 124, 255, 0.35), transparent 32%);
+}
+
+.homepage_bg {
+    background: url("../../../assets/Images/bghome.svg");
+}
