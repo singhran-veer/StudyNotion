@@ -51,7 +51,6 @@ export default function CourseInformationForm() {
       setValue("courseShortDesc", course.courseDescription)
       setValue("coursePrice", course.price)
       setValue("courseTags", course.tag)
-      set
       setValue("courseBenefits", course.whatYouWillLearn)
       setValue("courseCategory", getCategoryId(course.category))
       setValue("courseRequirements", course.instructions ?? [])
