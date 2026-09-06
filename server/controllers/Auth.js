@@ -1,21 +1,25 @@
 const User=require("../models/User");
-const OTP=require("../models/OTP");
 const otpGenerator=require("otp-generator");
 const bcrypt=require("bcrypt");
 const Profile = require("../models/Profile");
-const nodemailer=require("nodemailer");
 const mailSender=require("../utils/mailSender");
+const emailTemplate = require("../mail/templates/emailVerificationTemplate");
 const {passwordUpdated}=require("../mail/templates/passwordUpdate");
 const jwt=require("jsonwebtoken");
+const { getRedisClient, setWithExpiry } = require("../config/redis");
 require("dotenv").config();
 //sendOTP
 exports.sendOTP=async(req,res)=>{
     try{
         //fetch email from req.body
         const {email}=req.body;
+        if(!email){
+            return res.status(400).json({success:false,message:"Email is required"});
+        }
+        const normalizedEmail = email.trim().toLowerCase();
 
         //check if user already exists
-        const checkUserPresent=await User.findOne({email});
+        const checkUserPresent=await User.findOne({email:normalizedEmail});
 
         if(checkUserPresent){
             return res.status(401).json({success:false,message:"User already exists"});
@@ -23,26 +27,15 @@ exports.sendOTP=async(req,res)=>{
 
         //generate otp
         var otp=otpGenerator.generate(6,{digits:true,lowerCaseAlphabets:false,upperCaseAlphabets:false,specialChars:false});
-        console.log("OTP generated:",otp);
+        const redis = await getRedisClient();
+        const otpKey = `otp:signup:${normalizedEmail}`;
 
-        //check uniqueness of otp
-        let result=await OTP.findOne({otp:otp});
-
-        while(result){
-            otp=otpGenerator.generate(6,{digits:true,lowerCaseAlphabets:false,upperCaseAlphabets:false,specialChars:false});
-            console.log("New OTP generated:",otp);
-            result=await OTP.findOne({otp:otp});
-        }
-
-        const otpPayload={email,otp};
-        //create an entry for otp
-        const otpBody= await OTP.create(otpPayload);
-        console.log("OTP created:",otpBody);
+        await mailSender(email, "Verification Email", emailTemplate(otp));
+        await setWithExpiry(redis, otpKey, otp, 120);
 
         res.status(200).json({
             success:true,
-            message:"OTP sent successfully",
-            otp
+            message:"OTP sent successfully"
         })
     }
     catch(err){
@@ -62,27 +55,30 @@ exports.signUp=async(req,res)=>{
         if(!firstName || !lastName || !email || !password || !confirmPassword || !otp){
             return res.status(403).json({success:false,message:"All fields are required"});
         }
+        const normalizedEmail = email.trim().toLowerCase();
 
         if(password!==confirmPassword){
             return res.status(400).json({success:false,message:"Password and confirm password do not match"});
         }
 
         //check if user already exists
-        const checkUserPresent=await User.findOne({email});
+        const checkUserPresent=await User.findOne({email:normalizedEmail});
         if(checkUserPresent){
             return res.status(400).json({success:false,message:"User already exists"});
         }
 
-        //find most recent otp from DB
-        const recentOtp=await OTP.findOne({email}).sort({createdAt:-1});
+        const redis = await getRedisClient();
+        const otpKey = `otp:signup:${normalizedEmail}`;
+        const recentOtp = await redis.get(otpKey);
 
         //validate otp
         if(!recentOtp){
             return res.status(400).json({success:false,message:"OTP not found"});
         }
-        if(recentOtp.otp!==otp){
+        if(recentOtp!==otp){
             return res.status(400).json({success:false,message:"Invalid OTP"});
         }
+        await redis.del(otpKey);
 
         //hash password        
         const hashedPassword=await bcrypt.hash(password,10);
@@ -96,7 +92,7 @@ exports.signUp=async(req,res)=>{
         });
 
         //create user
-        const userPayload={firstName,lastName,email,password:hashedPassword,accountType,contactNumber,additionalDetails:profileDetails._id,image:`https://api.dicebear.com/5.x/initials/svg?seed=${firstName} ${lastName}`};
+        const userPayload={firstName,lastName,email:normalizedEmail,password:hashedPassword,accountType,contactNumber,additionalDetails:profileDetails._id,image:`https://api.dicebear.com/5.x/initials/svg?seed=${firstName} ${lastName}`};
         const user=await User.create(userPayload);
 
         return res.status(200).json({

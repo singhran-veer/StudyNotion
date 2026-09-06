@@ -2,6 +2,7 @@ const User=require("../models/User");
 const mailSender=require("../utils/mailSender");
 const bcrypt=require("bcrypt");
 const crypto=require("crypto");
+const { getRedisClient, setWithExpiry } = require("../config/redis");
 
 //resetPasswordToken
 exports.resetPasswordToken=async(req,res)=>{
@@ -17,9 +18,12 @@ exports.resetPasswordToken=async(req,res)=>{
 
         //generate token
         const token=crypto.randomUUID();
-        //update user by adding token and expiration time
-        const updatedDetails=await User.findOneAndUpdate({email:email},{token:token,resetPasswordExpires:Date.now()+5*60*1000},{returnDocument:"after"});
-        const url=`http://localhost:3000/update-password/${token}`; //reset password url
+        const redis = await getRedisClient();
+        // Keep the reset token outside the user document so Redis can expire it automatically.
+        await setWithExpiry(redis, `password-reset:${token}`, user._id.toString(), 300);
+        await User.findOneAndUpdate({email:email},{resetPasswordExpires:Date.now()+5*60*1000},{returnDocument:"after"});
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const url=`${frontendUrl}/update-password/${token}`; //reset password url
 
         //send mail containing url
         await mailSender(email,"Reset password link from StudyNotion",url);
@@ -44,22 +48,19 @@ exports.resetPassword=async(req,res)=>{
             return res.status(400).json({success:false,message:"Password and confirm password do not match"});
         }
 
-        //get user details from using token from db
-        const userDetails=await User.findOne({token:token});
+        const redis = await getRedisClient();
+        const userId = await redis.get(`password-reset:${token}`);
 
-        if(!userDetails){
+        if(!userId){
             return res.status(400).json({success:false,message:"Invalid token"});
         }
 
-        //token time check
-        if(userDetails.resetPasswordExpires<new Date()){
-            return res.status(400).json({success:false,message:"Token expired"});
-        }
         //hash password
         const hashedPassword=await bcrypt.hash(password,10);
 
         //update password
-        await User.findOneAndUpdate({token:token},{password:hashedPassword},{returnDocument:"after"});
+        await User.findByIdAndUpdate(userId,{password:hashedPassword},{returnDocument:"after"});
+        await redis.del(`password-reset:${token}`);
         //send response
         return res.status(200).json({success:true,message:"Password reset successfully"});
     }
